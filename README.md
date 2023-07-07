@@ -12,12 +12,12 @@
 
 ## (3) Standard MixUp Partial
 - 600 original images
-- + 600 mixup iterations (α = 0.2)
+- plus 600 mixup iterations (α = 0.2)
 
 
 ## (4) Manifold / Noisy Feature / Align MixUp Partial
 - 600 original images
-- + 600 MixUp iterations per epoch
+- plus 600 MixUp iterations per epoch
 
 
 ## (5) Manifold / Noisy Feature / Align MixUp Whole
