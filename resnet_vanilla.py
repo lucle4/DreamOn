@@ -14,11 +14,12 @@ classes = ('benign', 'malignant', 'normal')
 
 n_epochs = 300
 batch_size = 32
+lr = 0.001
+beta_1 = 0.9
+beta_2 = 0.999
+
 img_size = 256
 n_classes = len(classes)
-lr = 0.001
-beta_1 = 0.5
-beta_2 = 0.999
 
 directory = os.getcwd()
 
