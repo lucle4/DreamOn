@@ -14,12 +14,11 @@ classes = ('benign', 'malignant', 'normal')
 
 n_epochs = 300
 batch_size = 32
-lr = 0.001
-beta_1 = 0.9
-beta_2 = 0.999
-
 img_size = 256
 n_classes = len(classes)
+lr = 0.001
+beta_1 = 0.5
+beta_2 = 0.999
 
 directory = os.getcwd()
 
@@ -89,6 +88,7 @@ criterion = nn.CrossEntropyLoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr, betas=(beta_1, beta_2))
 
 stats = []
+lowest_test_loss = 0.0
 
 for epoch in range(n_epochs):
     running_train_loss = 0.0
@@ -162,4 +162,9 @@ for epoch in range(n_epochs):
         for parameter in stats:
             writer.writerow(parameter)
 
-    torch.save(model.state_dict(), 'checkpoints_generated/checkpoint epoch {}.pt'.format(n_epochs))
+    if test_loss > lowest_test_loss:
+        lowest_test_loss = test_loss
+        torch.save(model.state_dict(), 'checkpoints_vanilla/checkpoint epoch {}.pt'.format(n_epochs))
+
+    elif (epoch + 1) % 10 == 0:
+        torch.save(model.state_dict(), 'checkpoints_vanilla/checkpoint epoch {}.pt'.format(n_epochs))
