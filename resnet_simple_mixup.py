@@ -5,7 +5,7 @@ import torch
 from torchvision import transforms
 from torch.distributions.beta import Beta
 from torch.utils.data import Dataset, DataLoader
-from torchvision.models import resnet18
+from torchvision.models import resnet50
 from PIL import Image
 import torch.nn as nn
 
@@ -24,11 +24,11 @@ alpha = 0.2
 
 directory = os.getcwd()
 
-img_dir_original = ''
-label_dir_original = ''
+img_dir_original = os.path.join(directory, 'BUSI/split/train')
+label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
 
-img_dir_test = ''
-label_dir_test = ''
+img_dir_test = os.path.join(directory, 'BUSI/split/test/original')
+label_dir_test = os.path.join(directory, 'BUSI/split/labels_test.csv')
 
 
 def mixup_data(images, labels, alpha):
@@ -86,8 +86,8 @@ train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 test_dataset = CustomDataset(img_dir_test, label_dir_test, transform=transform)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
-model = resnet18(pretrained=False)
-model.fc = nn.Linear(512, 3)
+model = resnet50(pretrained=False)
+model.fc = nn.Linear(2048, 3)
 
 if torch.cuda.is_available():
     model.cuda()
@@ -96,11 +96,10 @@ criterion = nn.CrossEntropyLoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr, betas=(beta_1, beta_2))
 
 stats = []
-lowest_test_loss = 0.0
+highest_test_accuracy = 0.0
 
 for epoch in range(n_epochs):
     running_train_loss = 0.0
-    running_test_loss = 0.0
     running_train_accuracy = 0.0
     running_test_accuracy = 0.0
     total_train = 0
@@ -146,25 +145,22 @@ for epoch in range(n_epochs):
             _, label = torch.max(labels, 1)
 
             total_test += current_batch_size
-            running_test_loss += test_loss.item()
             running_test_accuracy += (predicted == label).sum().item()
 
     train_loss_epoch = running_train_loss / total_train
-    test_loss_epoch = running_test_loss / total_test
     train_accuracy = 100 * running_train_accuracy / total_train
     test_accuracy = 100 * running_test_accuracy / total_test
 
     stats_epoch = {
-        'epoch': f'{epoch}',
+        'epoch': f'{epoch + 1}',
         'train loss': f'{train_loss_epoch:.3f}',
-        'test loss': f'{test_loss_epoch:.3f}',
         'train accuracy': f'{train_accuracy:.2f}%',
         'test accuracy': f'{test_accuracy:.2f}%'
     }
 
     stats.append(stats_epoch)
 
-    fieldnames = ['epoch', 'train loss', 'test loss', 'train accuracy', 'test accuracy']
+    fieldnames = ['epoch', 'train loss', 'train accuracy', 'test accuracy']
 
     with open('stats_simple_mixup.csv', 'w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -173,9 +169,9 @@ for epoch in range(n_epochs):
         for parameter in stats:
             writer.writerow(parameter)
 
-    if test_loss > lowest_test_loss:
-        lowest_test_loss = test_loss
-        torch.save(model.state_dict(), 'checkpoints_vanilla/checkpoint epoch {}.pt'.format(n_epochs))
+    if test_accuracy > highest_test_accuracy and epoch > 50:
+        highest_test_accuracy = test_accuracy
+        torch.save(model.state_dict(), 'checkpoints_simple_mixup/checkpoint epoch {}.pt'.format(epoch + 1))
 
-    elif (epoch + 1) % 10 == 0:
-        torch.save(model.state_dict(), 'checkpoints_vanilla/checkpoint epoch {}.pt'.format(n_epochs))
+    elif (epoch + 1) % 50 == 0:
+        torch.save(model.state_dict(), 'checkpoints_simple_mixup/checkpoint epoch {}.pt'.format(epoch + 1))

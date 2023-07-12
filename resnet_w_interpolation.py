@@ -3,7 +3,7 @@ import csv
 import pandas as pd
 import torch
 from torchvision import transforms
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, ConcatDataset, DataLoader
 from torchvision.models import resnet50
 from PIL import Image
 import torch.nn as nn
@@ -24,6 +24,9 @@ directory = os.getcwd()
 
 img_dir_original = os.path.join(directory, 'BUSI/split/train')
 label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
+
+img_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation')
+label_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation_labels.csv')
 
 img_dir_test = os.path.join(directory, 'BUSI/split/test/original')
 label_dir_test = os.path.join(directory, 'BUSI/split/labels_test.csv')
@@ -62,15 +65,15 @@ class CustomDataset(Dataset):
 
 
 transform = transforms.Compose([
-    transforms.RandomRotation(degrees=(-15, 15)),
     transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
-    transforms.RandomHorizontalFlip(),
-    transforms.ColorJitter(brightness=0.2, contrast=0.5, saturation=0, hue=0),
     transforms.ToTensor(),
     transforms.Normalize([0.5], [0.5])])
 
-train_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+original_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform)
+generated_dataset = CustomDataset(img_dir_generated, label_dir_generated, transform=transform)
+
+combined_dataset = ConcatDataset([original_dataset, generated_dataset])
+combined_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
 
 test_dataset = CustomDataset(img_dir_test, label_dir_test, transform=transform)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
@@ -94,7 +97,7 @@ for epoch in range(n_epochs):
     total_train = 0
     total_test = 0
 
-    for i, (images, labels) in enumerate(train_loader):
+    for i, (images, labels) in enumerate(combined_loader):
         model.train()
         optimizer.zero_grad()
 
@@ -148,7 +151,7 @@ for epoch in range(n_epochs):
 
     fieldnames = ['epoch', 'train loss', 'train accuracy', 'test accuracy']
 
-    with open('stats_SDA.csv', 'w', newline='') as file:
+    with open('stats_w_interpolation.csv', 'w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -157,7 +160,7 @@ for epoch in range(n_epochs):
 
     if test_accuracy > highest_test_accuracy and epoch > 50:
         highest_test_accuracy = test_accuracy
-        torch.save(model.state_dict(), 'checkpoints_SDA/checkpoint epoch {}.pt'.format(epoch + 1))
+        torch.save(model.state_dict(), 'checkpoints_w_interpolation/checkpoint epoch {}.pt'.format(epoch + 1))
 
     elif (epoch + 1) % 50 == 0:
-        torch.save(model.state_dict(), 'checkpoints_SDA/checkpoint epoch {}.pt'.format(epoch + 1))
+        torch.save(model.state_dict(), 'checkpoints_vw_interpolation/checkpoint epoch {}.pt'.format(epoch + 1))
