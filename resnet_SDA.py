@@ -7,17 +7,14 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.models import resnet50
 from PIL import Image
 import torch.nn as nn
-from torch.optim.lr_scheduler import StepLR
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 classes = ('benign', 'malignant', 'normal')
 
-n_epochs = 300
-batch_size = 32
-lr = 0.1
-momentum = 0.9
-weight_decay = 1e-4
+n_epochs = 50
+batch_size = 20
+lr = 0.001
 
 img_size = 256
 n_classes = len(classes)
@@ -82,14 +79,13 @@ test_dataset = CustomDataset(img_dir_test, label_dir_test, transform=transform_t
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 model = resnet50(pretrained=False)
-model.fc = nn.Linear(2048, 3)
+model.fc = nn.Linear(512, 3)
 
 if torch.cuda.is_available():
     model.cuda()
 
 criterion = nn.CrossEntropyLoss().to(device)
-optimizer = torch.optim.SGD(model.parameters(), lr, momentum=momentum, weight_decay=weight_decay)
-scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
+optimizer = torch.optim.Adam(model.parameters(), lr, betas=(0.9, 0.999))
 
 stats = []
 highest_test_accuracy = 0.0
@@ -142,9 +138,7 @@ for epoch in range(n_epochs):
 
             total_test += current_batch_size
 
-    scheduler.step()
-
-    train_loss_epoch = running_train_loss / len(test_loader)
+    train_loss_epoch = running_train_loss / len(train_loader)
     train_accuracy = 100 * running_train_accuracy / total_train
     test_accuracy = 100 * running_test_accuracy / total_test
 
