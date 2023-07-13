@@ -136,10 +136,6 @@ for epoch in range(n_epochs):
     train_accuracy = 100 * (running_train_accuracy / len(train_loader.sampler))
     test_accuracy = 100 * (running_test_accuracy / len(test_loader.sampler))
 
-    print(epoch)
-    print(f'{train_accuracy:.2f}%')
-    print(f'{test_accuracy:.2f}%')
-
     stats_epoch = {
         'epoch': f'{epoch + 1}',
         'train loss': f'{train_loss_epoch:.3f}',
