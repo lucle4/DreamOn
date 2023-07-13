@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.models import resnet18
 from PIL import Image
 import torch.nn as nn
+from torchvision.utils import save_image
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -60,16 +61,20 @@ class CustomDataset(Dataset):
         return image
 
 
-transform = transforms.Compose([
+transform_train = transforms.Compose([
     transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
     transforms.ToTensor(),
-    transforms.Normalize([0.5], [0.5])])
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-train_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform)
+transform_test = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+train_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform_train)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-test_dataset = CustomDataset(img_dir_test, label_dir_test, transform=transform)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+test_dataset = CustomDataset(img_dir_test, label_dir_test, transform=transform_test)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 model = resnet18(pretrained=False)
 model.fc = nn.Linear(512, 3)
@@ -78,7 +83,7 @@ if torch.cuda.is_available():
     model.cuda()
 
 criterion = nn.CrossEntropyLoss().to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr, betas=(0.9, 0.999))
+optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
 
 stats = []
 highest_test_accuracy = 0.0
@@ -94,7 +99,7 @@ for epoch in range(n_epochs):
         model.train()
         optimizer.zero_grad()
 
-        current_batch_size = images.size()[0]
+        current_batch_size = images.size(0)
 
         images = images.to(device)
         labels = labels.to(device)
@@ -105,18 +110,16 @@ for epoch in range(n_epochs):
         train_loss.backward()
         optimizer.step()
 
+        _, labels = torch.max(labels, 1)
         _, predicted = torch.max(output, 1)
-        _, label = torch.max(labels, 1)
 
         running_train_loss += train_loss.item()
-        running_train_accuracy += (predicted == label).sum().item()
-
-        total_train += current_batch_size
+        running_train_accuracy += (predicted == labels).sum().item()
 
     with torch.no_grad():
         model.eval()
         for i, (images, labels) in enumerate(test_loader):
-            current_batch_size = images.size()[0]
+            current_batch_size = images.size(0)
 
             images = images.to(device)
             labels = labels.to(device)
@@ -124,16 +127,18 @@ for epoch in range(n_epochs):
             output = model(images.float())
             test_loss = criterion(output, labels)
 
+            _, labels = torch.max(labels, 1)
             _, predicted = torch.max(output, 1)
-            _, label = torch.max(labels, 1)
 
-            running_test_accuracy += (predicted == label).sum().item()
+            running_test_accuracy += (predicted == labels).sum().item()
 
-            total_test += current_batch_size
+    train_loss_epoch = running_train_loss / len(train_loader.sampler)
+    train_accuracy = 100 * (running_train_accuracy / len(train_loader.sampler))
+    test_accuracy = 100 * (running_test_accuracy / len(test_loader.sampler))
 
-    train_loss_epoch = running_train_loss / len(train_loader)
-    train_accuracy = 100 * running_train_accuracy / total_train
-    test_accuracy = 100 * running_test_accuracy / total_test
+    print(epoch)
+    print(f'{train_accuracy:.2f}%')
+    print(f'{test_accuracy:.2f}%')
 
     stats_epoch = {
         'epoch': f'{epoch + 1}',
