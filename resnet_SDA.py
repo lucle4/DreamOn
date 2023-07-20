@@ -4,7 +4,7 @@ import pandas as pd
 import torch
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
-from torchvision.models import resnet50
+from torchvision.models import resnet18
 from PIL import Image
 import torch.nn as nn
 
@@ -12,7 +12,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 classes = ('benign', 'malignant', 'normal')
 
-n_epochs = 50
+n_epochs = 100
 batch_size = 20
 lr = 0.001
 
@@ -23,6 +23,9 @@ directory = os.getcwd()
 
 img_dir_original = os.path.join(directory, 'BUSI/split/train')
 label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
+
+img_dir_evaluate = os.path.join(directory, 'BUSI/split/evaluate')
+label_dir_evaluate = os.path.join(directory, 'BUSI/split/labels_evaluate.csv')
 
 img_dir_test = os.path.join(directory, 'BUSI/split/test/original')
 label_dir_test = os.path.join(directory, 'BUSI/split/labels_test.csv')
@@ -75,10 +78,13 @@ transform_test = transforms.Compose([
 train_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform_train)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-test_dataset = CustomDataset(img_dir_test, label_dir_test, transform=transform_test)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+evaluate_dataset = CustomDataset(img_dir_evaluate, label_dir_evaluate, transform=transform_test)
+evaluate_loader = DataLoader(evaluate_dataset, batch_size=1, shuffle=True)
 
-model = resnet50(pretrained=False)
+test_dataset = CustomDataset(img_dir_test, label_dir_test, transform=transform_test)
+test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True)
+
+model = resnet18(pretrained=False)
 model.fc = nn.Linear(512, 3)
 
 if torch.cuda.is_available():
@@ -88,14 +94,55 @@ criterion = nn.CrossEntropyLoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr, betas=(0.9, 0.999))
 
 stats = []
-highest_test_accuracy = 0.0
+highest_evaluation_accuracy = 0.0
+
+
+def overall_accuracy(targets, predictions):
+    correct_predictions = 0
+    total_predictions = 0
+
+    for target, prediction in zip(targets, predictions):
+        target_class = torch.argmax(target)
+        prediction_class = torch.argmax(prediction)
+
+        if target_class == prediction_class:
+            correct_predictions += 1
+
+        total_predictions += 1
+
+    overall_acc = correct_predictions / total_predictions
+
+    return overall_acc
+
+
+def balanced_accuracy(targets, predictions):
+    correct_per_class = [0] * len(classes)
+    total_per_class = [0] * len(classes)
+
+    for target, prediction in zip(targets, predictions):
+        target_class = torch.argmax(target)
+        prediction_class = torch.argmax(prediction)
+
+        if target_class == prediction_class:
+            correct_per_class[target_class] += 1
+
+        total_per_class[target_class] += 1
+
+    class_balanced_acc = [correct / total if total > 0 else 0 for correct, total in
+                          zip(correct_per_class, total_per_class)]
+    mean_balanced_acc = sum(class_balanced_acc) / len(classes)
+
+    return mean_balanced_acc, class_balanced_acc
+
 
 for epoch in range(n_epochs):
     running_train_loss = 0.0
-    running_train_accuracy = 0.0
-    running_test_accuracy = 0.0
-    total_train = 0
-    total_test = 0
+
+    predictions_evaluate = []
+    labels_evaluate = []
+
+    predictions_test = []
+    labels_test = []
 
     for i, (images, labels) in enumerate(train_loader):
         model.train()
@@ -107,21 +154,28 @@ for epoch in range(n_epochs):
         labels = labels.to(device)
 
         output = model(images.float())
+
         train_loss = criterion(output, labels)
 
         train_loss.backward()
         optimizer.step()
 
-        _, predicted = torch.max(output, 1)
-        _, label = torch.max(labels, 1)
-
         running_train_loss += train_loss.item()
-        running_train_accuracy += (predicted == label).sum().item()
-
-        total_train += current_batch_size
 
     with torch.no_grad():
         model.eval()
+        for i, (images, labels) in enumerate(evaluate_loader):
+            current_batch_size = images.size()[0]
+
+            images = images.to(device)
+            labels = labels.to(device)
+
+            output = model(images.float())
+            test_loss = criterion(output, labels)
+
+            predictions_evaluate.append(output)
+            labels_evaluate.append(labels)
+
         for i, (images, labels) in enumerate(test_loader):
             current_batch_size = images.size()[0]
 
@@ -131,27 +185,28 @@ for epoch in range(n_epochs):
             output = model(images.float())
             test_loss = criterion(output, labels)
 
-            _, predicted = torch.max(output, 1)
-            _, label = torch.max(labels, 1)
-
-            running_test_accuracy += (predicted == label).sum().item()
-
-            total_test += current_batch_size
+            predictions_test.append(output)
+            labels_test.append(labels)
 
     train_loss_epoch = running_train_loss / len(train_loader)
-    train_accuracy = 100 * running_train_accuracy / total_train
-    test_accuracy = 100 * running_test_accuracy / total_test
+    evaluate_balanced_accuracy, _ = balanced_accuracy(labels_evaluate, predictions_evaluate)
+    evaluate_overall_accuracy = overall_accuracy(labels_evaluate, predictions_evaluate)
+    test_balanced_accuracy, _ = balanced_accuracy(labels_test, predictions_test)
+    test_overall_accuracy = overall_accuracy(labels_test, predictions_test)
 
     stats_epoch = {
         'epoch': f'{epoch + 1}',
         'train loss': f'{train_loss_epoch:.3f}',
-        'train accuracy': f'{train_accuracy:.2f}%',
-        'test accuracy': f'{test_accuracy:.2f}%'
+        'evaluate balanced accuracy': f'{evaluate_balanced_accuracy * 100:.2f}%',
+        'evaluate overall accuracy': f'{evaluate_overall_accuracy * 100:.2f}%',
+        'test balanced accuracy': f'{test_balanced_accuracy * 100:.2f}%',
+        'test overall accuracy': f'{test_overall_accuracy * 100:.2f}%'
     }
 
     stats.append(stats_epoch)
 
-    fieldnames = ['epoch', 'train loss', 'train accuracy', 'test accuracy']
+    fieldnames = ['epoch', 'train loss', 'evaluate balanced accuracy', 'evaluate overall accuracy',
+                  'test balanced accuracy', 'test overall accuracy']
 
     with open('stats_SDA.csv', 'w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -160,9 +215,9 @@ for epoch in range(n_epochs):
         for parameter in stats:
             writer.writerow(parameter)
 
-    if test_accuracy > highest_test_accuracy and epoch > 50:
-        highest_test_accuracy = test_accuracy
-        torch.save(model.state_dict(), 'checkpoints_SDA/checkpoint epoch {}.pt'.format(epoch + 1))
+    if evaluate_balanced_accuracy > highest_evaluation_accuracy:
+        highest_evaluation_accuracy = evaluate_balanced_accuracy
+        torch.save(model.state_dict(), 'checkpoints_SDA/checkpoint highest accuracy.pt')
 
     elif (epoch + 1) % 50 == 0:
         torch.save(model.state_dict(), 'checkpoints_SDA/checkpoint epoch {}.pt'.format(epoch + 1))

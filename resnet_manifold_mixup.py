@@ -3,7 +3,7 @@ import csv
 import pandas as pd
 import torch
 from torchvision import transforms
-from torch.utils.data import Dataset, ConcatDataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 from torchvision.models import resnet18
 from PIL import Image
 import torch.nn as nn
@@ -24,15 +24,16 @@ directory = os.getcwd()
 img_dir_original = os.path.join(directory, 'BUSI/split/train')
 label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
 
-img_dir_generated = os.path.join(directory, 'gen_dataset/no_interpolation')
-label_dir_generated = os.path.join(directory, 'gen_dataset/no_interpolation_labels.csv')
-
 img_dir_evaluate = os.path.join(directory, 'BUSI/split/evaluate')
 label_dir_evaluate = os.path.join(directory, 'BUSI/split/labels_evaluate.csv')
 
 img_dir_test = os.path.join(directory, 'BUSI/split/test/original')
 label_dir_test = os.path.join(directory, 'BUSI/split/labels_test.csv')
 
+
+def manifold_mixup():
+
+    return 0
 
 class CustomDataset(Dataset):
     def __init__(self, img_dir, label_dir, transform=None):
@@ -71,11 +72,8 @@ transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize([0.5], [0.5])])
 
-original_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform)
-generated_dataset = CustomDataset(img_dir_generated, label_dir_generated, transform=transform)
-
-combined_dataset = ConcatDataset([original_dataset, generated_dataset])
-combined_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
+train_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
 evaluate_dataset = CustomDataset(img_dir_evaluate, label_dir_evaluate, transform=transform)
 evaluate_loader = DataLoader(evaluate_dataset, batch_size=1, shuffle=True)
@@ -143,7 +141,7 @@ for epoch in range(n_epochs):
     predictions_test = []
     labels_test = []
 
-    for i, (images, labels) in enumerate(combined_loader):
+    for i, (images, labels) in enumerate(train_loader):
         model.train()
         optimizer.zero_grad()
 
@@ -187,7 +185,7 @@ for epoch in range(n_epochs):
             predictions_test.append(output)
             labels_test.append(labels)
 
-    train_loss_epoch = running_train_loss / len(combined_loader)
+    train_loss_epoch = running_train_loss / len(train_loader)
     evaluate_balanced_accuracy, _ = balanced_accuracy(labels_evaluate, predictions_evaluate)
     evaluate_overall_accuracy = overall_accuracy(labels_evaluate, predictions_evaluate)
     test_balanced_accuracy, _ = balanced_accuracy(labels_test, predictions_test)
@@ -207,7 +205,7 @@ for epoch in range(n_epochs):
     fieldnames = ['epoch', 'train loss', 'evaluate balanced accuracy', 'evaluate overall accuracy',
                   'test balanced accuracy', 'test overall accuracy']
 
-    with open('stats_no_interpolation.csv', 'w', newline='') as file:
+    with open('stats_manifold_mixup.csv', 'w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -216,7 +214,7 @@ for epoch in range(n_epochs):
 
     if evaluate_balanced_accuracy > highest_evaluation_accuracy:
         highest_evaluation_accuracy = evaluate_balanced_accuracy
-        torch.save(model.state_dict(), 'checkpoints_no_interpolation/checkpoint highest accuracy.pt')
+        torch.save(model.state_dict(), 'checkpoints_manifold_mixup/checkpoint highest accuracy.pt')
 
     elif (epoch + 1) % 50 == 0:
-        torch.save(model.state_dict(), 'checkpoints_no_interpolation/checkpoint epoch {}.pt'.format(epoch + 1))
+        torch.save(model.state_dict(), 'checkpoints_manifold_mixup/checkpoint epoch {}.pt'.format(epoch + 1))

@@ -24,8 +24,8 @@ directory = os.getcwd()
 img_dir_original = os.path.join(directory, 'BUSI/split/train')
 label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
 
-img_dir_generated = os.path.join(directory, 'gen_dataset/no_interpolation')
-label_dir_generated = os.path.join(directory, 'gen_dataset/no_interpolation_labels.csv')
+img_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation')
+label_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation_labels_as_file.csv')
 
 img_dir_evaluate = os.path.join(directory, 'BUSI/split/evaluate')
 label_dir_evaluate = os.path.join(directory, 'BUSI/split/labels_evaluate.csv')
@@ -207,7 +207,7 @@ for epoch in range(n_epochs):
     fieldnames = ['epoch', 'train loss', 'evaluate balanced accuracy', 'evaluate overall accuracy',
                   'test balanced accuracy', 'test overall accuracy']
 
-    with open('stats_no_interpolation.csv', 'w', newline='') as file:
+    with open('stats_interpolation_label_as_file.csv', 'w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -216,7 +216,7 @@ for epoch in range(n_epochs):
 
     if evaluate_balanced_accuracy > highest_evaluation_accuracy:
         highest_evaluation_accuracy = evaluate_balanced_accuracy
-        torch.save(model.state_dict(), 'checkpoints_no_interpolation/checkpoint highest accuracy.pt')
+        torch.save(model.state_dict(), 'checkpoints_interpolation_label_as_file/checkpoint highest accuracy.pt')
 
     elif (epoch + 1) % 50 == 0:
-        torch.save(model.state_dict(), 'checkpoints_no_interpolation/checkpoint epoch {}.pt'.format(epoch + 1))
+        torch.save(model.state_dict(), 'checkpoints_interpolation_label_as_file/checkpoint epoch {}.pt'.format(epoch + 1))
