@@ -228,4 +228,4 @@ for epoch in range(n_epochs):
         torch.save(model.state_dict(), 'checkpoints_simple_mixup/checkpoint highest accuracy.pt')
 
     elif (epoch + 1) % 50 == 0:
-        torch.save(model.state_dict(), 'checkpoints_simmple_mixup/checkpoint epoch {}.pt'.format(epoch + 1))
+        torch.save(model.state_dict(), 'checkpoints_simple_mixup/checkpoint epoch {}.pt'.format(epoch + 1))
