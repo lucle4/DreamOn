@@ -3,8 +3,7 @@ import csv
 import pandas as pd
 import torch
 from torchvision import transforms
-from torch.utils.data import Dataset, DataLoader
-from torch.distributions import Beta
+from torch.utils.data import Dataset, ConcatDataset, DataLoader
 from torchvision.models import resnet18
 from PIL import Image
 import torch.nn as nn
@@ -26,22 +25,14 @@ directory = os.getcwd()
 img_dir_original = os.path.join(directory, 'BUSI/split/train')
 label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
 
+img_dir_mixup = os.path.join(directory, 'gen_dataset/mixup')
+label_dir_mixup = os.path.join(directory, 'gen_dataset/labels_mixup.csv')
+
 img_dir_evaluate = os.path.join(directory, 'BUSI/split/evaluate')
 label_dir_evaluate = os.path.join(directory, 'BUSI/split/labels_evaluate.csv')
 
 img_dir_test = os.path.join(directory, 'BUSI/split/test/original')
 label_dir_test = os.path.join(directory, 'BUSI/split/labels_test.csv')
-
-
-def mixup_data(images, labels, alpha):
-    batch_size = images.size(0)
-    weights = Beta(alpha, alpha).sample((batch_size,)).to(device)
-    indices = torch.randperm(batch_size).to(device)
-
-    mixed_images = weights.view(batch_size, 1, 1, 1) * images + (1 - weights.view(batch_size, 1, 1, 1)) * images[indices]
-    mixed_labels = weights.view(batch_size, 1) * labels + (1 - weights.view(batch_size, 1)) * labels[indices]
-
-    return mixed_images, mixed_labels
 
 
 class CustomDataset(Dataset):
@@ -81,8 +72,11 @@ transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize([0.5], [0.5])])
 
-train_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+original_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform)
+mixup_dataset = CustomDataset(img_dir_mixup, label_dir_mixup, transform=transform)
+
+combined_dataset = ConcatDataset([original_dataset, mixup_dataset])
+combined_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
 
 evaluate_dataset = CustomDataset(img_dir_evaluate, label_dir_evaluate, transform=transform)
 evaluate_loader = DataLoader(evaluate_dataset, batch_size=1, shuffle=True)
@@ -150,7 +144,7 @@ for epoch in range(n_epochs):
     predictions_test = []
     labels_test = []
 
-    for i, (images, labels) in enumerate(train_loader):
+    for i, (images, labels) in enumerate(combined_loader):
         model.train()
         optimizer.zero_grad()
 
@@ -159,11 +153,9 @@ for epoch in range(n_epochs):
         images = images.to(device)
         labels = labels.to(device)
 
-        mixed_images, mixed_labels = mixup_data(images, labels, alpha)
+        output = model(images.float())
 
-        output = model(mixed_images.float())
-
-        train_loss = criterion(output, mixed_labels)
+        train_loss = criterion(output, labels)
 
         train_loss.backward()
         optimizer.step()
@@ -196,7 +188,7 @@ for epoch in range(n_epochs):
             predictions_test.append(output)
             labels_test.append(labels)
 
-    train_loss_epoch = running_train_loss / len(train_loader)
+    train_loss_epoch = running_train_loss / len(combined_loader)
     evaluate_balanced_accuracy, _ = balanced_accuracy(labels_evaluate, predictions_evaluate)
     evaluate_overall_accuracy = overall_accuracy(labels_evaluate, predictions_evaluate)
     test_balanced_accuracy, _ = balanced_accuracy(labels_test, predictions_test)

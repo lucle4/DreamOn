@@ -79,7 +79,7 @@ transform_test = transforms.Compose([
     transforms.Normalize([0.5], [0.5])])
 
 original_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform_train)
-generated_dataset = CustomDataset(img_dir_generated, label_dir_generated, transform=transform_train)
+generated_dataset = CustomDataset(img_dir_generated, label_dir_generated, transform=transform_test)
 
 combined_dataset = ConcatDataset([original_dataset, generated_dataset])
 combined_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)

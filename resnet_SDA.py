@@ -3,7 +3,7 @@ import csv
 import pandas as pd
 import torch
 from torchvision import transforms
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, ConcatDataset, DataLoader
 from torchvision.models import resnet18
 from PIL import Image
 import torch.nn as nn
@@ -63,20 +63,28 @@ class CustomDataset(Dataset):
         return image
 
 
-transform_train = transforms.Compose([
+transform_SDA = transforms.Compose([
     transforms.RandomRotation(degrees=(-15, 15)),
-    transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
     transforms.RandomHorizontalFlip(),
     transforms.ColorJitter(brightness=0.2, contrast=0.5, saturation=0, hue=0),
     transforms.ToTensor(),
+    transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
+    transforms.Normalize([0.5], [0.5])])
+
+transform_normal = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
     transforms.Normalize([0.5], [0.5])])
 
 transform_test = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize([0.5], [0.5])])
 
-train_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform_train)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+original_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform_normal)
+SDA_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform_SDA)
+
+combined_dataset = ConcatDataset([original_dataset, SDA_dataset])
+combined_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
 
 evaluate_dataset = CustomDataset(img_dir_evaluate, label_dir_evaluate, transform=transform_test)
 evaluate_loader = DataLoader(evaluate_dataset, batch_size=1, shuffle=True)
@@ -144,7 +152,7 @@ for epoch in range(n_epochs):
     predictions_test = []
     labels_test = []
 
-    for i, (images, labels) in enumerate(train_loader):
+    for i, (images, labels) in enumerate(combined_loader):
         model.train()
         optimizer.zero_grad()
 
@@ -188,7 +196,7 @@ for epoch in range(n_epochs):
             predictions_test.append(output)
             labels_test.append(labels)
 
-    train_loss_epoch = running_train_loss / len(train_loader)
+    train_loss_epoch = running_train_loss / len(combined_loader)
     evaluate_balanced_accuracy, _ = balanced_accuracy(labels_evaluate, predictions_evaluate)
     evaluate_overall_accuracy = overall_accuracy(labels_evaluate, predictions_evaluate)
     test_balanced_accuracy, _ = balanced_accuracy(labels_test, predictions_test)
