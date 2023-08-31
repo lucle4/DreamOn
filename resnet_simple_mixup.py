@@ -15,7 +15,6 @@ classes = ('benign', 'malignant', 'normal')
 n_epochs = 100
 batch_size = 20
 lr = 0.001
-alpha = 0.4
 
 img_size = 256
 n_classes = len(classes)

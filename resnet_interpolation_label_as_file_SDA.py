@@ -66,20 +66,25 @@ class CustomDataset(Dataset):
         return image
 
 
-transform_train = transforms.Compose([
+transform_SDA = transforms.Compose([
     transforms.RandomRotation(degrees=(-15, 15)),
-    transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
     transforms.RandomHorizontalFlip(),
     transforms.ColorJitter(brightness=0.2, contrast=0.5, saturation=0, hue=0),
     transforms.ToTensor(),
+    transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
+    transforms.Normalize([0.5], [0.5])])
+
+transform_normal = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
     transforms.Normalize([0.5], [0.5])])
 
 transform_test = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize([0.5], [0.5])])
 
-original_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform_train)
-generated_dataset = CustomDataset(img_dir_generated, label_dir_generated, transform=transform_test)
+original_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform_normal)
+generated_dataset = CustomDataset(img_dir_generated, label_dir_generated, transform=transform_SDA)
 
 combined_dataset = ConcatDataset([original_dataset, generated_dataset])
 combined_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)

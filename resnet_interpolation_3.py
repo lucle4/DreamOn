@@ -25,7 +25,7 @@ img_dir_original = os.path.join(directory, 'BUSI/split/train')
 label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
 
 img_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation_3')
-label_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation_labels_as_file_3.csv')
+label_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation_higher_labels_3.csv')
 
 img_dir_evaluate = os.path.join(directory, 'BUSI/split/evaluate')
 label_dir_evaluate = os.path.join(directory, 'BUSI/split/labels_evaluate.csv')
