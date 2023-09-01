@@ -1,5 +1,6 @@
 import os
 import csv
+import numpy as np
 import pandas as pd
 import torch
 from torchvision import transforms
@@ -15,12 +16,12 @@ classes = ('benign', 'malignant', 'normal')
 n_epochs = 100
 batch_size = 20
 lr = 0.001
+alpha = 0.8
 
 img_size = 256
 n_classes = len(classes)
 
 directory = os.getcwd()
-
 img_dir_original = os.path.join(directory, 'BUSI/split/train')
 label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
 
@@ -31,16 +32,11 @@ img_dir_test = os.path.join(directory, 'BUSI/split/test/original')
 label_dir_test = os.path.join(directory, 'BUSI/split/labels_test.csv')
 
 
-def manifold_mixup():
-
-    return 0
-
 class CustomDataset(Dataset):
     def __init__(self, img_dir, label_dir, transform=None):
         self.img_dir = img_dir
         self.label_dir = label_dir
         self.transform = transform
-
         self.labels_df = pd.read_csv(label_dir, header=None)
 
     def __len__(self):
@@ -49,17 +45,12 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
         filename = self.labels_df.iloc[index, 0]
         label = self.labels_df.iloc[index, 1]
-
         label = [float(i) for i in label.split(',')]
         label = torch.tensor(label)
-
         image_path = os.path.join(self.img_dir, filename)
-
         image = self.load_image(image_path)
-
         if self.transform:
             image = self.transform(image)
-
         return image, label
 
     def load_image(self, image_path):
@@ -67,10 +58,63 @@ class CustomDataset(Dataset):
         return image
 
 
+def mixup_data(x, y, alpha=alpha):
+    lam = np.random.beta(alpha, alpha)
+    batch_size = x.size()[0]
+
+    index = torch.randperm(batch_size).to(x.device)
+    mixed_x = lam * x + (1 - lam) * x[index, :]
+
+    y_a, y_b = y, y[index]
+
+    return mixed_x, y_a, y_b, lam
+
+
+def register_forward_hook(layer):
+    activations = []
+
+    def hook(module, input, output):
+        activations.append(output)
+
+    handle = layer.register_forward_hook(hook)
+
+    return activations, handle
+
+
+def continue_forward_pass(model, layer_name, x):
+    if layer_name == 'layer1':
+        x = model.layer2(x)
+        x = model.layer3(x)
+        x = model.layer4(x)
+        x = model.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = model.fc(x)
+    elif layer_name == 'layer2':
+        x = model.layer3(x)
+        x = model.layer4(x)
+        x = model.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = model.fc(x)
+    elif layer_name == 'layer3':
+        x = model.layer4(x)
+        x = model.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = model.fc(x)
+    elif layer_name == 'layer4':
+        x = model.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = model.fc(x)
+    elif layer_name == 'fc':
+        pass
+
+    return x
+
+
 transform = transforms.Compose([
-    transforms.transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
+    transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BILINEAR),
     transforms.ToTensor(),
     transforms.Normalize([0.5], [0.5])])
+
 
 train_dataset = CustomDataset(img_dir_original, label_dir_original, transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -84,8 +128,18 @@ test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True)
 model = resnet18(pretrained=False)
 model.fc = nn.Linear(512, 3)
 
+print(model)
+
 if torch.cuda.is_available():
     model.cuda()
+
+eligible_layers = {'layer1': model.layer1,
+                   'layer2': model.layer2,
+                   'layer3': model.layer3,
+                   'layer4': model.layer4,
+                   'fc': model.fc}
+
+hook_outputs = {name: register_forward_hook(layer) for name, layer in eligible_layers.items()}
 
 criterion = nn.CrossEntropyLoss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr, betas=(0.9, 0.999))
@@ -141,6 +195,7 @@ for epoch in range(n_epochs):
     predictions_test = []
     labels_test = []
 
+    # no mixup
     for i, (images, labels) in enumerate(train_loader):
         model.train()
         optimizer.zero_grad()
@@ -153,6 +208,35 @@ for epoch in range(n_epochs):
         output = model(images.float())
 
         train_loss = criterion(output, labels)
+
+        train_loss.backward()
+        optimizer.step()
+
+        running_train_loss += train_loss.item()
+
+    # with mixup
+    for i, (images, labels) in enumerate(train_loader):
+        optimizer.zero_grad()
+
+        for name, (activations, _) in hook_outputs.items():
+            del activations[:]
+
+        images = images.to(device)
+        labels = labels.to(device)
+
+        output = model(images.float())
+
+        selected_layer_name = np.random.choice(list(eligible_layers.keys()))
+
+        activations, _ = hook_outputs[selected_layer_name]
+        activations = activations[0]
+
+        mixed_activations, labels_a, labels_b, lam = mixup_data(activations, labels)
+        mixed_output = continue_forward_pass(model, selected_layer_name, mixed_activations)
+
+        loss_a = criterion(mixed_output, labels_a)
+        loss_b = criterion(mixed_output, labels_b)
+        train_loss = lam * loss_a + (1 - lam) * loss_b
 
         train_loss.backward()
         optimizer.step()
@@ -185,7 +269,7 @@ for epoch in range(n_epochs):
             predictions_test.append(output)
             labels_test.append(labels)
 
-    train_loss_epoch = running_train_loss / len(train_loader)
+    train_loss_epoch = running_train_loss / (len(train_loader) * 2)
     evaluate_balanced_accuracy, _ = balanced_accuracy(labels_evaluate, predictions_evaluate)
     evaluate_overall_accuracy = overall_accuracy(labels_evaluate, predictions_evaluate)
     test_balanced_accuracy, _ = balanced_accuracy(labels_test, predictions_test)
