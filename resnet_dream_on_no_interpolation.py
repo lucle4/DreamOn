@@ -24,11 +24,11 @@ directory = os.getcwd()
 img_dir_original = os.path.join(directory, 'BUSI/split/train')
 label_dir_original = os.path.join(directory, 'BUSI/split/labels_train.csv')
 
-img_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation')
-label_dir_generated = os.path.join(directory, 'gen_dataset/w_interpolation_higher_labels.csv')
+img_dir_generated = os.path.join(directory, 'gen_dataset/no_interpolation')
+label_dir_generated = os.path.join(directory, 'gen_dataset/no_interpolation_labels.csv')
 
-img_dir_evaluate = os.path.join(directory, 'BUSI/split/evaluate')
-label_dir_evaluate = os.path.join(directory, 'BUSI/split/labels_evaluate.csv')
+img_dir_validate = os.path.join(directory, 'BUSI/split/validate')
+label_dir_validate = os.path.join(directory, 'BUSI/split/labels_validate.csv')
 
 img_dir_test = os.path.join(directory, 'BUSI/split/test/original')
 label_dir_test = os.path.join(directory, 'BUSI/split/labels_test.csv')
@@ -77,8 +77,8 @@ generated_dataset = CustomDataset(img_dir_generated, label_dir_generated, transf
 combined_dataset = ConcatDataset([original_dataset, generated_dataset])
 combined_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
 
-evaluate_dataset = CustomDataset(img_dir_evaluate, label_dir_evaluate, transform=transform)
-evaluate_loader = DataLoader(evaluate_dataset, batch_size=1, shuffle=True)
+validate_dataset = CustomDataset(img_dir_validate, label_dir_validate, transform=transform)
+validate_loader = DataLoader(validate_dataset, batch_size=1, shuffle=True)
 
 test_dataset = CustomDataset(img_dir_test, label_dir_test, transform=transform)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True)
@@ -137,8 +137,8 @@ def balanced_accuracy(targets, predictions):
 for epoch in range(n_epochs):
     running_train_loss = 0.0
 
-    predictions_evaluate = []
-    labels_evaluate = []
+    predictions_validate = []
+    labels_validate = []
 
     predictions_test = []
     labels_test = []
@@ -163,7 +163,7 @@ for epoch in range(n_epochs):
 
     with torch.no_grad():
         model.eval()
-        for i, (images, labels) in enumerate(evaluate_loader):
+        for i, (images, labels) in enumerate(validate_loader):
             current_batch_size = images.size()[0]
 
             images = images.to(device)
@@ -172,8 +172,8 @@ for epoch in range(n_epochs):
             output = model(images.float())
             test_loss = criterion(output, labels)
 
-            predictions_evaluate.append(output)
-            labels_evaluate.append(labels)
+            predictions_validate.append(output)
+            labels_validate.append(labels)
 
         for i, (images, labels) in enumerate(test_loader):
             current_batch_size = images.size()[0]
@@ -188,35 +188,35 @@ for epoch in range(n_epochs):
             labels_test.append(labels)
 
     train_loss_epoch = running_train_loss / len(combined_loader)
-    evaluate_balanced_accuracy, _ = balanced_accuracy(labels_evaluate, predictions_evaluate)
-    evaluate_overall_accuracy = overall_accuracy(labels_evaluate, predictions_evaluate)
+    validate_balanced_accuracy, _ = balanced_accuracy(labels_validate, predictions_validate)
+    validate_overall_accuracy = overall_accuracy(labels_validate, predictions_validate)
     test_balanced_accuracy, _ = balanced_accuracy(labels_test, predictions_test)
     test_overall_accuracy = overall_accuracy(labels_test, predictions_test)
 
     stats_epoch = {
         'epoch': f'{epoch + 1}',
         'train loss': f'{train_loss_epoch:.3f}',
-        'evaluate balanced accuracy': f'{evaluate_balanced_accuracy * 100:.2f}%',
-        'evaluate overall accuracy': f'{evaluate_overall_accuracy * 100:.2f}%',
+        'validate balanced accuracy': f'{validate_balanced_accuracy * 100:.2f}%',
+        'validate overall accuracy': f'{validate_overall_accuracy * 100:.2f}%',
         'test balanced accuracy': f'{test_balanced_accuracy * 100:.2f}%',
         'test overall accuracy': f'{test_overall_accuracy * 100:.2f}%'
     }
 
     stats.append(stats_epoch)
 
-    fieldnames = ['epoch', 'train loss', 'evaluate balanced accuracy', 'evaluate overall accuracy',
+    fieldnames = ['epoch', 'train loss', 'validate balanced accuracy', 'validate overall accuracy',
                   'test balanced accuracy', 'test overall accuracy']
 
-    with open('stats_interpolation_higher_label.csv', 'w', newline='') as file:
+    with open('stats_no_interpolation.csv', 'w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
 
         for parameter in stats:
             writer.writerow(parameter)
 
-    if evaluate_balanced_accuracy > highest_evaluation_accuracy:
-        highest_evaluation_accuracy = evaluate_balanced_accuracy
-        torch.save(model.state_dict(), 'checkpoints_interpolation_higher_label/checkpoint highest accuracy.pt')
+    if validate_balanced_accuracy > highest_evaluation_accuracy:
+        highest_evaluation_accuracy = validate_balanced_accuracy
+        torch.save(model.state_dict(), 'checkpoints_no_interpolation/checkpoint highest accuracy.pt')
 
     elif (epoch + 1) % 50 == 0:
-        torch.save(model.state_dict(), 'checkpoints_interpolation_higher_label/checkpoint epoch {}.pt'.format(epoch + 1))
+        torch.save(model.state_dict(), 'checkpoints_no_interpolation/checkpoint epoch {}.pt'.format(epoch + 1))
