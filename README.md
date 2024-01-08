@@ -2,17 +2,17 @@
 
 
 
-## (1) Dream On
+## (1) DreamOn
 - 600 original images
 - 600 generated images (2 classes per image)
 
 
-## (2) Dream On + SDA
+## (2) DreamOn + SDA
 - 600 original images
 - 600 generated images (2 classes per image) with standard data augmentation
 
 
-## (3) Dream On (no interpolation)
+## (3) DreamOff
 - 600 original images
 - 600 generated images (1 class per image)
 
